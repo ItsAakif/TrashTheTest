@@ -1,0 +1,103 @@
+# TrashTheTest v2 local stack (Phase 2 live gate).
+#
+# Local dev runs api + worker + Postgres/pgvector + Redis-compatible cache
+# + frontend from this file. Hosted deployments use the SAME code against
+# hosted Supabase Postgres+pgvector (DATABASE_URL) and hosted Redis
+# (REDIS_URL): no code change, only env. Phase 2 is NOT blocked on prod
+# self-host; see .planning/progress/T201-T211.md for what ran where.
+#
+#   cp .env.example .env   # fill JWT_SECRET, provider keys
+#   docker compose up --build
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.0-pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: trashthetest
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+
+  api:
+    build: ./artifacts/ai-services
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/trashthetest
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_PATH: /data/storage
+      # Persisted ML weight cache (survives rebuilds; no re-download of the
+      # ~1GB Qwen embedding weights + PP-OCR models on every recreate).
+      HF_HOME: /root/.cache/huggingface
+      SENTENCE_TRANSFORMERS_HOME: /root/.cache/torch/sentence_transformers
+      PADDLEX_HOME: /root/.cache/paddlex
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - tjdata:/data
+      - modelcache:/root/.cache
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build: ./artifacts/ai-services
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/trashthetest
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_PATH: /data/storage
+      HF_HOME: /root/.cache/huggingface
+      SENTENCE_TRANSFORMERS_HOME: /root/.cache/torch/sentence_transformers
+      PADDLEX_HOME: /root/.cache/paddlex
+      # CPU-only box: native torch/onnx work releases the GIL, so 4
+      # overlapping jobs (each page-sequential internally) raise multi-doc
+      # throughput without oversubscribing the shared model singletons.
+      WORKER_CONCURRENCY: 4
+    env_file:
+      - .env
+    volumes:
+      - tjdata:/data
+      - modelcache:/root/.cache
+    command: python -m services.jobs.worker
+
+  frontend:
+    build:
+      context: .
+      dockerfile: ./artifacts/trash-the-test/Dockerfile
+    ports:
+      - "5174:5173"
+    environment:
+      # Container-internal port; the host-side mapping above (5174) avoids
+      # clashing with a dev server already bound to 5173.
+      PORT: "5173"
+      # HMR runs over the host-published port, not the container port.
+      VITE_HMR_CLIENT_PORT: "5174"
+      VITE_API_BASE_URL: http://localhost:8000
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  redisdata:
+  tjdata:
+  modelcache:

@@ -1,0 +1,74 @@
+/*
+ * pdf.js v6 text-layer layout rules.
+ *
+ * pdfjs-dist ships these rules inside `web/pdf_viewer.css`, but importing that
+ * file would pull in the whole bundled viewer chrome. The viewer is built
+ * directly on `pdfjs-dist` (framework-agnostic), so only the text-layer
+ * subset is needed here. Rules mirror `.textLayer` from pdf.js v6:
+ *
+ *   --total-scale-factor  -> set inline on the container by the component
+ *   --min-font-size       -> written inline by the TextLayer constructor
+ *   --scale-round-x/y     -> set inline on the container by the component
+ *
+ * Scoped to `.pdf-text-layer` so nothing else in the app is affected.
+ */
+
+.pdf-text-layer {
+  color-scheme: only light;
+
+  position: absolute;
+  text-align: initial;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 0;
+
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.pdf-text-layer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.pdf-text-layer > :not(.markedContent),
+.pdf-text-layer .markedContent span:not(.markedContent) {
+  z-index: 1;
+
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.pdf-text-layer .markedContent {
+  display: contents;
+}
+
+.pdf-text-layer span[role="img"] {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+.pdf-text-layer ::selection {
+  background: rgba(0 0 255 / 0.25);
+  color: transparent;
+}

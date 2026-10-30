@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TrashTheTest">
+  <rect width="64" height="64" rx="15" fill="#0E0E0E"/>
+  <rect x="15" y="17" width="34" height="8" rx="4" fill="#E7E5E4"/>
+  <rect x="28" y="25" width="8" height="23" rx="4" fill="#E7E5E4"/>
+  <circle cx="48" cy="47" r="5.5" fill="#FF3C00"/>
+</svg>

@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "TrashTheTest"
+version = "1.0.0"
+id = "artifacts/trash-the-test"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18266
+
+[services.development]
+run = "pnpm --filter @workspace/trash-the-test run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/trash-the-test", "run", "build" ]
+publicDir = "artifacts/trash-the-test/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18266"
+BASE_PATH = "/"

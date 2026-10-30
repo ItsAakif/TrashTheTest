@@ -1,0 +1,27 @@
+# Keep host build junk out of the frontend image context.
+#
+# Why this exists: artifacts/trash-the-test/Dockerfile runs `pnpm install`
+# (Linux bins/links) and THEN copies sources over it. Without these excludes,
+# a host-side `node_modules/` (Windows junctions/symlinks) and `dist/` get
+# copied on top of the fresh container install and destroy the Linux vite
+# binary links -> runtime crash:
+#   Cannot find module '/repo/node_modules/.pnpm/vite@.../node_modules/vite/bin/vite.js'
+#
+# NOTE: `.env` is intentionally NOT excluded: the frontend Dockerfile has
+# always baked it in and dev-server behavior must not change here. Compose
+# additionally passes VITE_API_BASE_URL explicitly.
+
+**/node_modules
+**/dist
+**/build
+**/.vite
+**/coverage
+
+.git
+.gitignore
+**/*.log
+.DS_Store
+
+pgdata
+redisdata
+tjdata
