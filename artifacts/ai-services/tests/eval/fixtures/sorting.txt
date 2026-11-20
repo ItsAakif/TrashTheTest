@@ -1,0 +1,5 @@
+Sorting and Searching Notes
+
+Bubble sort compares adjacent elements and swaps them when they are out of order. Bubble sort is stable and runs in O(n^2) time in the worst case. Insertion sort builds a sorted prefix one element at a time. Insertion sort is stable and runs in O(n) time when the input is already sorted.
+
+Binary search halves a sorted array at each step. Binary search runs in O(log n) time and requires the array to be sorted first. Linear search scans every element and runs in O(n) time, but it works on unsorted data.

@@ -1,0 +1,284 @@
+{
+  "version": "2.0",
+  "project_title": "RAG Eval Golden",
+  "provenance": "existing hand-labelled golden set (tests/eval/golden_queries.json); anchors are expected chunk texts mapped to live chunks; not independently re-validated",
+  "notes": "36 labelled chunks across 3 documents, 30 queries. No labels were fabricated for this run.",
+  "queries": [
+    {
+      "id": "q01",
+      "query": "How do plants turn sunlight into food energy?",
+      "anchors": [
+        "Photosynthesis converts light energy into chemical energy stored in glucose."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q02",
+      "query": "chlorophyll thylakoid membranes absorb light",
+      "anchors": [
+        "Chlorophyll a and chlorophyll b absorb red and blue light in the thylakoid membranes."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q03",
+      "query": "Which reactions split water and release oxygen?",
+      "anchors": [
+        "The light dependent reactions split water, release oxygen, and produce ATP and NADPH."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q04",
+      "query": "Calvin cycle fixes carbon dioxide in the stroma",
+      "anchors": [
+        "The Calvin cycle fixes carbon dioxide into sugar in the stroma using ATP and NADPH."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q05",
+      "query": "How do leaves take in carbon dioxide without drying out?",
+      "anchors": [
+        "Stomata control carbon dioxide intake and water loss from leaves."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q06",
+      "query": "What limits how fast photosynthesis can run?",
+      "anchors": [
+        "Light intensity, carbon dioxide concentration, and temperature limit the rate of photosynthesis."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q07",
+      "query": "C4 plants maize photorespiration hot climates",
+      "anchors": [
+        "C4 plants such as maize concentrate carbon dioxide to reduce photorespiration in hot climates."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q08",
+      "query": "CAM plants stomata night malic acid",
+      "anchors": [
+        "CAM plants open stomata at night and store carbon dioxide as malic acid."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q09",
+      "query": "Where inside the chloroplast are thylakoids stacked?",
+      "anchors": [
+        "Chloroplasts contain thylakoids stacked into grana surrounded by stroma fluid."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q10",
+      "query": "Photosystem II photosystem I electron transport chain",
+      "anchors": [
+        "Photosystem II and photosystem I work in series in the electron transport chain."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q11",
+      "query": "Why does rubisco sometimes grab oxygen and waste energy?",
+      "anchors": [
+        "Photorespiration occurs when rubisco binds oxygen instead of carbon dioxide, wasting energy.",
+        "Rubisco is the most abundant enzyme on Earth and catalyzes carbon fixation."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q12",
+      "query": "Where do ATP and NADPH get made and then used up?",
+      "anchors": [
+        "The light dependent reactions split water, release oxygen, and produce ATP and NADPH.",
+        "The Calvin cycle fixes carbon dioxide into sugar in the stroma using ATP and NADPH."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q13",
+      "query": "What is an ordered list of numbers with direction called?",
+      "anchors": [
+        "A vector is an ordered list of numbers describing magnitude and direction."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q14",
+      "query": "dot product measures alignment of vectors",
+      "anchors": [
+        "The dot product of two vectors equals the sum of pairwise products and measures alignment.",
+        "Orthogonal vectors have a zero dot product and meet at right angles."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q15",
+      "query": "What is a rectangular array of numbers with rows and columns?",
+      "anchors": [
+        "A matrix is a rectangular array of numbers with rows and columns."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q16",
+      "query": "Why does the order of matrix multiplication matter?",
+      "anchors": [
+        "Matrix multiplication composes linear maps and is not commutative in general."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q17",
+      "query": "determinant zero singular invertible matrix",
+      "anchors": [
+        "The determinant measures how a matrix scales volume; zero means singular.",
+        "A square matrix is invertible exactly when its determinant is nonzero."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q18",
+      "query": "Which vectors keep their direction under a transformation?",
+      "anchors": [
+        "Eigenvectors keep their direction under a matrix; eigenvalues give the stretch factor."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q19",
+      "query": "When is a set of vectors redundant?",
+      "anchors": [
+        "Vectors are linearly independent when no one is a combination of the others."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q20",
+      "query": "rank of a matrix column space dimension",
+      "anchors": [
+        "The rank of a matrix is the dimension of its column space."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q21",
+      "query": "How do you project one vector onto another?",
+      "anchors": [
+        "Projecting a vector onto another uses the dot product divided by the squared norm."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q22",
+      "query": "cross product perpendicular 3D vectors sine angle",
+      "anchors": [
+        "The cross product of two 3D vectors is perpendicular to both, scaled by the sine of the angle."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q23",
+      "query": "Estates General clergy nobility Third Estate Versailles 1789",
+      "anchors": [
+        "The Estates General of 1789 convened the clergy, nobility, and Third Estate at Versailles."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q24",
+      "query": "What oath did the National Assembly swear about a constitution?",
+      "anchors": [
+        "The National Assembly swore the Tennis Court Oath not to disband before writing a constitution."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q25",
+      "query": "stormed the Bastille 14 July 1789 Paris",
+      "anchors": [
+        "On 14 July 1789 revolutionaries stormed the Bastille fortress in Paris."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q26",
+      "query": "Which declaration proclaimed liberty and equality?",
+      "anchors": [
+        "The Declaration of the Rights of Man proclaimed liberty, equality, and popular sovereignty."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q27",
+      "query": "Reign of Terror Robespierre guillotine Thermidorian",
+      "anchors": [
+        "The Reign of Terror under Robespierre sent thousands to the guillotine in 1793 and 1794.",
+        "The Thermidorian Reaction arrested Robespierre and ended the Terror in July 1794."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q28",
+      "query": "How did Napoleon take power and what did he replace?",
+      "anchors": [
+        "Napoleon Bonaparte seized power in the coup of 18 Brumaire in 1799.",
+        "The Directory ruled France from 1795 until Napoleon's coup replaced it."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q29",
+      "query": "Who marched on Versailles demanding bread in October 1789?",
+      "anchors": [
+        "In October 1789 thousands of women marched on Versailles demanding bread and reforms."
+      ],
+      "category": "paraphrase",
+      "difficulty": "unlabelled"
+    },
+    {
+      "id": "q30",
+      "query": "Louis XVI executed guillotine January 1793",
+      "anchors": [
+        "Louis XVI was executed by guillotine in January 1793 after the monarchy fell."
+      ],
+      "category": "exact",
+      "difficulty": "unlabelled"
+    }
+  ]
+}

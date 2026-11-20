@@ -288,7 +288,60 @@ async def process_job(ctx: Any, job: Any) -> None:
                 source=document.file_name, page_spans=spans,
                 boilerplate_lines=find_boilerplate_lines(
                     [(p.text or "") for p in pages])))
+            try:
+                from services.chunking.types import ChunkingConfig as _CCfg
+                _cfg = _CCfg()
+                document.chunk_config = {
+                    "min_chunk_size": getattr(_cfg, "min_chunk_size", None),
+                    "max_chunk_size": getattr(_cfg, "max_chunk_size", None),
+                    "overlap_size": getattr(_cfg, "overlap_size", None),
+                }
+            except Exception:
+                pass
+            try:
+                prev_chunk_count = len(await repositories.get_chunks_by_document(db, doc_id))
+            except Exception:
+                prev_chunk_count = 0
             await service._store_chunks(db, str(doc_id), str(project_id), result.chunks)
+            # S1 lifecycle: prune stale chunks (content changed) + pages
+            # beyond the current page count, then bump the document version
+            # when indexed content actually changed. Idempotent: a re-run
+            # with identical input deletes nothing and bumps nothing.
+            try:
+                new_hashes = {c.content_hash for c in result.chunks if c.content_hash}
+                deleted = 0
+                if new_hashes:
+                    deleted = await repositories.delete_chunks_not_in_hashes(db, doc_id, new_hashes)
+                current_pages = int(
+                    getattr(document, "page_count_confirmed", None)
+                    or getattr(document, "page_count", None)
+                    or len(pages)
+                )
+                pruned = await repositories.prune_pages_beyond_count(db, doc_id, current_pages)
+                # content_hash is stamped at extraction; use chunk count churn
+                # + deletions as the change signal (no new hash computed here).
+                changed = bool(
+                    deleted or pruned
+                    or (prev_chunk_count > 0 and prev_chunk_count != len(result.chunks))
+                )
+                if changed:
+                    _ccfg = None
+                    _emv = None
+                    try:
+                        from services.chunking.types import ChunkingConfig as _CC
+                        _cfg = _CC()
+                        _ccfg = {
+                            "min_chunk_size": getattr(_cfg, "min_chunk_size", None),
+                            "max_chunk_size": getattr(_cfg, "max_chunk_size", None),
+                            "overlap_size": getattr(_cfg, "overlap_size", None),
+                        }
+                    except Exception:
+                        _ccfg = None
+                    await repositories.bump_document_version(
+                        db, doc_id, embedding_model_version=_emv, chunk_config=_ccfg)
+                    logger.info("Document %s version bumped (stale chunks=%d pruned pages=%d)", doc_id, deleted, pruned)
+            except Exception as exc:
+                logger.warning("Stale cleanup for %s failed (non-fatal): %s", doc_id, exc)
             await _report(_slice("chunk", 1.0),
                           stage="chunk", message=f"Chunked {result.total_chunks} chunks")
             _mark_done("chunk")
@@ -347,26 +400,73 @@ async def process_job(ctx: Any, job: Any) -> None:
                     doc_id, project_id, db, job_id=job.id,
                     progress_callback=_on_embed)
                 embedded = getattr(result, "embedded_chunks", len(chunks)) or 0
-                if len(chunks) and embedded < len(chunks):
+                complete = getattr(result, "is_complete", True)
+                try:
+                    document.embedding_model_version = embedder._model_name()
+                except Exception:
+                    pass
+                if (len(chunks) and embedded < len(chunks)) or not complete:
+                    # S1: partial embedding is a retryable failure, never a
+                    # silent complete. Persisted batches stay persisted, so a
+                    # retry only re-embeds the missing ones (idempotent by
+                    # chunk id + content hash).
                     reason = (f"partial embeddings: {embedded}/{len(chunks)} "
                               "chunks embedded")
-                    await repositories.set_document_indexing_state(
-                        db, doc_id, "partial", degraded_reason=reason)
+                    try:
+                        await repositories.set_document_indexing_state(
+                            db, doc_id, "partial", degraded_reason=reason)
+                    except Exception:
+                        pass
                     out = dict(job.output_data or {})
                     out["_embedding_partial"] = reason
+                    out["degraded_reason"] = reason
+                    out["indexing_state"] = "partial"
+                    # Retry must re-enter the embed stage. Resume infers
+                    # completed stages from job.stage, so step it back to the
+                    # previous stage and keep "embed" out of _stages_done.
+                    done.discard("embed")
+                    out["_stages_done"] = sorted(done)
+                    out["_stage"] = "chunk"
                     job.output_data = out
+                    job.stage = "chunk"
+                    await _report(_slice("embed", 1.0),
+                                  stage="chunk",
+                                  message=f"Embedding incomplete: {reason}")
+                    await q.fail(db, job.id, reason, retry=True)
+                    return
             except Exception as exc:
-                # T404: embedding failure is recorded honestly, never
-                # swallowed into a false "indexed" claim.
-                logger.warning("Embedding deferred for %s: %s", doc_id, exc)
-                reason = f"unembedded: embedding provider failed ({exc})"
-                await repositories.set_document_indexing_state(
-                    db, doc_id, "unembedded", degraded_reason=reason)
+                # S1: transient/permanent embedding failure must NOT complete.
+                # Record honestly, then fail so the queue can retry (persisted
+                # batches are reused; no duplicate chunks are created).
+                logger.warning("Embedding failed for %s: %s", doc_id, exc)
+                reason = f"unembedded: embedding provider failed ({type(exc).__name__}: {exc})"
+                try:
+                    await repositories.set_document_indexing_state(
+                        db, doc_id, "unembedded", degraded_reason=reason)
+                except Exception:
+                    pass
                 out = dict(job.output_data or {})
                 out["_embedding_deferred"] = str(exc)
                 out["degraded_reason"] = reason
                 out["indexing_state"] = "unembedded"
+                done.discard("embed")
+                out["_stages_done"] = sorted(done)
+                out["_stage"] = "chunk"
                 job.output_data = out
+                job.stage = "chunk"
+                await _report(_slice("embed", 1.0),
+                              stage="chunk",
+                              message=f"Embedding failed: {reason}")
+                await q.fail(db, job.id, reason, retry=True)
+                return
+            # Success erases failure markers from an earlier attempt, or the
+            # complete stage would keep reporting partial after a retry.
+            out = dict(job.output_data or {})
+            out.pop("_embedding_partial", None)
+            out.pop("_embedding_deferred", None)
+            out.pop("degraded_reason", None)
+            out["indexing_state"] = "indexed"
+            job.output_data = out
             await _report(_slice("embed", 1.0),
                           stage="embed", message="Embedding complete")
             _mark_done("embed")

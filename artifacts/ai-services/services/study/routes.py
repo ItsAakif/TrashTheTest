@@ -455,6 +455,49 @@ async def tutor_message(
             detail="Project not found"
         )
 
+    # Metadata questions ("what documents have I uploaded?") are not study
+    # content; answering them from retrieved chunks is misleading. Answer
+    # from the project's real document rows instead.
+    import re as _re
+
+    lowered = (request.message or "").lower()
+    asks_documents = bool(
+        _re.search(r"(what|which|list|show)\b.*\b(documents?|files?|pdfs?|sources?)\b", lowered)
+        and _re.search(r"(upload|uploaded|have|added|project|my)\b", lowered)
+    ) or bool(_re.search(r"how many (documents?|files?|pdfs?)", lowered))
+    if asks_documents:
+        try:
+            docs = await repositories.get_documents_by_project(db, project_uuid)
+        except Exception:
+            docs = []
+        if docs:
+            lines = [
+                f"- {getattr(d, 'file_name', 'document')} "
+                f"({getattr(d, 'page_count', None) or '?'} pages, "
+                f"{getattr(d, 'indexing_state', None) or 'unknown'})"
+                for d in docs
+            ]
+            return {
+                "response": (
+                    f"You have {len(docs)} document(s) in "
+                    f"{getattr(project, 'name', 'this project')}:\n\n"
+                    + "\n".join(lines)
+                ),
+                "sources": [],
+                "citations": [],
+                "intent": "document_list",
+                "retrieval_used": False,
+                "grounded": False,
+            }
+        return {
+            "response": "No documents have been uploaded to this project yet.",
+            "sources": [],
+            "citations": [],
+            "intent": "document_list",
+            "retrieval_used": False,
+            "grounded": False,
+        }
+
     # Gate intent before retrieval.  Social messages must never trigger a
     # vector query, and unrelated/ambiguous requests must not receive an
     # academic dump from a generic model prompt.
@@ -496,6 +539,38 @@ async def tutor_message(
             "retrieval_used": False,
             "grounded": False,
         }
+
+    # S3 answer cache. Scoped by user, project, document versions, embedding
+    # and LLM model, prompt version and retrieval config. A cached answer is
+    # only returned when every one of those still matches.
+    cache_identity = None
+    cache_doc_versions: List[str] = []
+    try:
+        from services.semantic_cache import (
+            semantic_cache, identity_key, doc_versions_for_project,
+            retrieval_config_hash, PROMPT_VERSION,
+        )
+        from config.settings import get_settings
+
+        cache_doc_versions = await doc_versions_for_project(db, project_uuid)
+        cache_identity = identity_key(
+            user_id=current_user.id,
+            project_id=project_uuid,
+            doc_versions=cache_doc_versions,
+            embedding_model=retrieval_service.config.embedding_model,
+            llm_model=str(getattr(get_settings(), "llm_model", "") or ""),
+            prompt_version=PROMPT_VERSION,
+            retrieval_config_hash=retrieval_config_hash(top_k=3, rerank=True),
+            response_format="tutor-v1",
+        )
+        cached = await semantic_cache.lookup(
+            db, layer="answer", query=request.message, identity=cache_identity,
+        )
+        if cached and isinstance(cached.get("response"), dict):
+            return {**cached["response"], "cache_hit": True,
+                    "cache_similarity": cached.get("similarity")}
+    except Exception:
+        pass
 
     # Use retrieval to get relevant context for the question
     try:
@@ -581,7 +656,7 @@ Give a clear, educational answer. Do not introduce unrelated facts."""
                 "span": span,
                 "method": getattr(citation, "method", None) if citation else None,
             })
-        return {
+        payload = {
             "response": response_text,
             "sources": [c.chunk_id for c in chunks if getattr(c, "chunk_id", None)],
             "citations": citations,
@@ -594,6 +669,26 @@ Give a clear, educational answer. Do not introduce unrelated facts."""
             "retrieval_used": True,
             "grounded": True,
         }
+        if cache_identity:
+            try:
+                from services.semantic_cache import semantic_cache, retrieval_config_hash as _rch
+                from config.settings import get_settings as _gs
+                await semantic_cache.store(
+                    db, layer="answer", query=request.message,
+                    identity=cache_identity, response=payload,
+                    citations=citations,
+                    document_ids=sorted({str(c.document_id) for c in chunks if getattr(c, "document_id", None)}),
+                    doc_versions=cache_doc_versions,
+                    project_id=project_uuid, user_id=current_user.id,
+                    embedding_model=retrieval_service.config.embedding_model,
+                    llm_model=str(getattr(_gs(), "llm_model", "") or ""),
+                    prompt_version="tutor-v1",
+                    retrieval_config_hash_value=_rch(top_k=3, rerank=True),
+                    response_format="tutor-v1",
+                )
+            except Exception:
+                pass
+        return payload
 
     except ValueError as e:
         raise HTTPException(

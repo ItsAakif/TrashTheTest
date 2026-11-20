@@ -268,7 +268,9 @@ async def test_resume_skips_completed_extract_stage(monkeypatch, tmp_path):
     monkeypatch.setattr(emb_svc.LocalEmbeddingService, "__init__", lambda self, *a, **k: None)
 
     async def fake_generate(self, document_id, project_id, db, job_id=None, **kw):
-        return SN(embedded_chunks=0)
+        # S1: the real service reports how many chunks were embedded. A fake
+        # that reports 0 of N is a partial failure and (correctly) retries.
+        return SN(embedded_chunks=len(db.chunks), is_complete=True)
 
     monkeypatch.setattr(emb_svc.LocalEmbeddingService, "generate_embeddings", fake_generate)
     await process_job(SN(db=db), job)

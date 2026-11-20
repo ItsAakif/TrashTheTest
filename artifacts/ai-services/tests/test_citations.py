@@ -105,3 +105,19 @@ def test_validate_splits_valid_and_rejected():
     valid, rejected = validate_citation_ids(["a", "b", "c"], {"a", "c"})
     assert valid == ["a", "c"]
     assert rejected == ["b"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_citation_rejects_non_matching_quote():
+    chunk = FakeChunk()
+    db = FakeDB([chunk])
+
+    ok = await resolve_citation(db, str(chunk.id), quote=chunk.content[:40])
+    assert ok.valid is True
+
+    wrong = await resolve_citation(
+        db, str(chunk.id), quote="this sentence is not in the chunk"
+    )
+    assert wrong.valid is False
+    assert "quote" in (wrong.reason or "")
+

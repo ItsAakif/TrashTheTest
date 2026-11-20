@@ -50,3 +50,5 @@ __all__ = [
     "KnowledgeNode",
     "CanonicalTopic",
 ]
+from .semantic_cache import SemanticCacheEntry
+from .retrieval_trace import RetrievalTrace

@@ -1,0 +1,7 @@
+Database Fundamentals
+
+A database index is a data structure that speeds up lookups at the cost of additional storage and slower writes. B-tree indexes support equality and range queries. A composite index can serve queries that filter on its leading columns.
+
+Normalization reduces redundancy by organizing columns into related tables. Third normal form removes transitive dependencies. Transactions group reads and writes so they either commit together or roll back together.
+
+ACID means atomicity, consistency, isolation and durability. Atomicity guarantees that a transaction is all-or-nothing. Isolation prevents concurrent transactions from observing each other's uncommitted changes. Durability ensures committed data survives a crash.

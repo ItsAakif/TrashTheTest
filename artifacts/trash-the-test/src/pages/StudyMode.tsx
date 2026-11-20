@@ -384,7 +384,7 @@ export default function StudyMode({ params }: StudyModeProps) {
                         Study Notes PDF
                       </h3>
                       <button
-                        onClick={() => setNotesDialogOpen(true)}
+                        onClick={() => generateNotesMutation.mutate()}
                         className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90"
                         style={{ color: "#e7e5e4", border: "1px solid rgba(72,72,72,0.3)" }}
                       >
@@ -427,6 +427,23 @@ export default function StudyMode({ params }: StudyModeProps) {
                             .filter(Boolean)
                             .join(" · ")}
                         </p>
+                        {(studyNotesPdf as { stale?: boolean } | null)?.stale && (
+                          <div
+                            className="mb-4 rounded-lg border px-4 py-3 text-sm"
+                            style={{ borderColor: "#6b5a2a", backgroundColor: "rgba(245,158,11,0.08)", color: "#f0d48a" }}
+                          >
+                            These notes were generated before your latest source change.
+                            <button
+                              type="button"
+                              onClick={() => generateNotesMutation.mutate()}
+                              disabled={generateNotesMutation.isPending}
+                              className="ml-2 underline font-semibold disabled:opacity-50"
+                              style={{ color: "#edfee9" }}
+                            >
+                              Regenerate now
+                            </button>
+                          </div>
+                        )}
                         {notesRun && notesRun.gaps.length > 0 && (
                           <details className="mb-3 text-sm" style={{ color: "#acabaa" }}>
                             <summary style={{ cursor: "pointer" }}>
@@ -452,19 +469,29 @@ export default function StudyMode({ params }: StudyModeProps) {
                             notes list above.
                           </p>
                         )}
-                        <button
-                          onClick={() =>
-                            navigate(
-                              studyNotesPdf.version
-                                ? `/documents/study-notes-${projectId}?version=${studyNotesPdf.version}`
-                                : `/documents/study-notes-${projectId}`
-                            )
-                          }
-                          className="px-6 py-3 rounded-xl font-semibold transition-all hover:opacity-90"
-                          style={{ backgroundColor: "#edfee9", color: "#131313" }}
-                        >
-                          Open Study Notes
-                        </button>
+                        <div className="flex flex-wrap gap-3">
+                          <button
+                            onClick={() =>
+                              navigate(
+                                studyNotesPdf.version
+                                  ? `/documents/study-notes-${projectId}?version=${studyNotesPdf.version}`
+                                  : `/documents/study-notes-${projectId}`
+                              )
+                            }
+                            className="px-6 py-3 rounded-xl font-semibold transition-all hover:opacity-90"
+                            style={{ backgroundColor: "#edfee9", color: "#131313" }}
+                          >
+                            Open Study Notes
+                          </button>
+                          <button
+                            onClick={() => generateNotesMutation.mutate()}
+                            disabled={generateNotesMutation.isPending || !hasDocuments}
+                            className="px-6 py-3 rounded-xl font-semibold transition-all hover:opacity-90 disabled:opacity-50"
+                            style={{ backgroundColor: "transparent", color: "#e7e5e4", border: "1px solid rgba(72,72,72,0.4)" }}
+                          >
+                            {generateNotesMutation.isPending ? "Regenerating..." : "Regenerate notes"}
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="flex flex-col gap-3">
@@ -473,7 +500,7 @@ export default function StudyMode({ params }: StudyModeProps) {
                         </p>
                         <div>
                           <button
-                            onClick={() => setNotesDialogOpen(true)}
+                            onClick={() => generateNotesMutation.mutate()}
                             disabled={!hasDocuments}
                             className="px-6 py-3 rounded-xl font-semibold transition-all hover:opacity-90 disabled:opacity-50"
                             style={{ backgroundColor: "#edfee9", color: "#131313" }}
@@ -519,7 +546,7 @@ export default function StudyMode({ params }: StudyModeProps) {
                         This is the next step to start learning from your materials.
                       </p>
                       <button
-                        onClick={() => setNotesDialogOpen(true)}
+                        onClick={() => generateNotesMutation.mutate()}
                         disabled={generateNotesMutation.isPending || !hasDocuments}
                         className="px-8 py-4 rounded-xl font-semibold transition-all hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
                         style={{ backgroundColor: "#edfee9", color: "#131313" }}

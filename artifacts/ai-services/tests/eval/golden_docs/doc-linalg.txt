@@ -1,0 +1,35 @@
+Vectors
+A vector is an ordered list of numbers describing magnitude and direction.
+
+Dot product
+The dot product of two vectors equals the sum of pairwise products and measures alignment.
+
+Matrices
+A matrix is a rectangular array of numbers with rows and columns.
+
+Matrix multiplication
+Matrix multiplication composes linear maps and is not commutative in general.
+
+Determinant
+The determinant measures how a matrix scales volume; zero means singular.
+
+Eigenvalues
+Eigenvectors keep their direction under a matrix; eigenvalues give the stretch factor.
+
+Linear independence
+Vectors are linearly independent when no one is a combination of the others.
+
+Rank
+The rank of a matrix is the dimension of its column space.
+
+Inverse matrix
+A square matrix is invertible exactly when its determinant is nonzero.
+
+Orthogonality
+Orthogonal vectors have a zero dot product and meet at right angles.
+
+Projections
+Projecting a vector onto another uses the dot product divided by the squared norm.
+
+Cross product
+The cross product of two 3D vectors is perpendicular to both, scaled by the sine of the angle.

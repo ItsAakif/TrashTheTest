@@ -312,9 +312,36 @@ async def get_notes_pdf_status(
     coverage = dict(selected.get("coverage") or {})
     config = dict(selected.get("config") or {})
     notes_config = dict(config.get("notes_config") or {})
+
+    # S1/notes UX: mark notes generated before the latest source change so
+    # the UI can offer regeneration instead of silently showing old notes.
+    stale = False
+    latest_source_at = None
+    try:
+        from datetime import datetime
+
+        from database import repositories
+
+        docs = await repositories.get_documents_by_project(db, project_id)
+        stamps = [d.updated_at or d.created_at for d in docs if (d.updated_at or d.created_at)]
+        if stamps:
+            latest = max(stamps)
+            latest_source_at = latest.isoformat()
+            created_raw = selected.get("created_at")
+            if created_raw:
+                created = created_raw
+                if isinstance(created, str):
+                    created = datetime.fromisoformat(created.replace("Z", "+00:00")).replace(tzinfo=None)
+                stale = created < latest
+    except Exception:
+        stale = False
+        latest_source_at = None
+
     return {
         **state,
         "state": "ready",
+        "stale": stale,
+        "latest_source_at": latest_source_at,
         "kind": "study-notes-pdf",
         "title": selected.get("title") or best_doc or "Study Notes",
         "artifact_id": selected.get("id"),

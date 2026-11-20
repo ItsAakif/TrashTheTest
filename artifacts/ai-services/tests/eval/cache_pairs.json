@@ -1,0 +1,47 @@
+{
+  "provenance": "manually authored equivalent/near-miss pairs; labels are author-assigned, not independently validated",
+  "equivalent": [
+    [
+      "How do plants turn sunlight into food energy?",
+      "How do plants make food from sunlight?"
+    ],
+    [
+      "What is a vector?",
+      "What is an ordered list of numbers with magnitude and direction called?"
+    ],
+    [
+      "Which vectors keep their direction under a transformation?",
+      "What are eigenvectors?"
+    ],
+    [
+      "How did Napoleon take power?",
+      "How did Napoleon rise to power?"
+    ],
+    [
+      "What is a matrix?",
+      "What is a rectangular array of numbers with rows and columns?"
+    ]
+  ],
+  "near_miss": [
+    [
+      "What is the dot product of two vectors?",
+      "What is the cross product of two vectors?"
+    ],
+    [
+      "What is an eigenvector?",
+      "What is an eigenvalue?"
+    ],
+    [
+      "How does bubble sort order a list?",
+      "How does binary search find an element?"
+    ],
+    [
+      "How do C4 plants reduce photorespiration?",
+      "How do CAM plants store carbon dioxide at night?"
+    ],
+    [
+      "What does the determinant measure?",
+      "What is the rank of a matrix?"
+    ]
+  ]
+}

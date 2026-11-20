@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
 import CreateProjectDialog from "@/components/CreateProjectDialog";
 import { DeleteDocumentButton } from "@/components/DeleteDocumentButton";
@@ -25,6 +25,7 @@ import {
 import { useActiveProject } from "@/lib/use-active-project";
 
 export default function Upload() {
+  const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const [dragOver, setDragOver] = useState(false);
   const [extractionLevel, setExtractionLevel] = useState("standard");
@@ -187,6 +188,9 @@ export default function Upload() {
       return uploader(file, projectId, { idempotencyKey, sourceType });
     },
     onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+      void queryClient.invalidateQueries({ queryKey: ["notes"] });
+      void queryClient.invalidateQueries({ queryKey: ["study-notes-pdf"] });
       setUploadedFileName(data.fileName);
       setUploadError(null);
       // Track real indexing progress from the job API, not a timer.
@@ -218,6 +222,8 @@ export default function Upload() {
       return uploadDocumentsMulti(files, projectId, sourceType);
     },
     onSuccess: (results) => {
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+      void queryClient.invalidateQueries({ queryKey: ["notes"] });
       setMultiResults(
         results.map((r) => ({ fileName: r.fileName, status: r.status, error: r.error }))
       );

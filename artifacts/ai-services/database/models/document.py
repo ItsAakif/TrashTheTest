@@ -113,6 +113,13 @@ class Document(Base):
     extraction_method_summary = Column(JSONB, nullable=True)  # {"native": 8, "vision:ppocr-tiny-ort": 2}
     content_hash = Column(String(64), nullable=True, index=True)  # sha256 of joined page text
     indexing_state = Column(String(32), nullable=True, default="none")  # none|indexing|indexed|partial|failed
+
+    # S1 lifecycle versioning (additive; migration 015).
+    # version bumps when reprocessing changes indexed content; old versions
+    # are never left searchable (stale chunks are deleted, not superseded rows).
+    version = Column(Integer, nullable=True, default=1)
+    embedding_model_version = Column(String(128), nullable=True)
+    chunk_config = Column(JSONB, nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -4,10 +4,11 @@ Repository Functions for Database Access
 Simple, reusable helper functions for common database operations.
 """
 
+import json
 import uuid
 from datetime import datetime
 from typing import Optional, List, Any, Tuple
-from sqlalchemy import select, update, delete, Integer
+from sqlalchemy import select, update, delete, Integer, text as _text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -660,6 +661,10 @@ async def search_similar_chunks_hybrid(
     offset: int = 0,
     min_similarity: float = 0.0,
     relaxed: bool = False,
+    vector_weight: float = 1.0,
+    lexical_weight: float = 1.0,
+    source_types: Optional[str] = None,
+    mode: str = "hybrid",
 ) -> List[Tuple[Chunk, float, str]]:
     """Hybrid retrieval executed in SQL on Postgres (T301).
 
@@ -726,6 +731,12 @@ async def search_similar_chunks_hybrid(
         # Ownership gate lives inside FUSED_SQL (typed uid CTE column):
         # None disables it. Always bound so asyncpg sees one typed $n.
         "user_id": str(user_id) if user_id else None,
+        "min_similarity": float(min_similarity or 0.0),
+        "vector_limit": int(per_arm) if mode in ("hybrid", "dense") else 0,
+        "lexical_limit": int(per_arm) if mode in ("hybrid", "sparse") else 0,
+        "vector_weight": float(vector_weight),
+        "lexical_weight": float(lexical_weight),
+        "source_types": ",".join(source_types) if isinstance(source_types, (list, tuple)) else (source_types or ""),
     }
     sql = FUSED_SQL
     try:
@@ -760,7 +771,13 @@ async def search_similar_chunks_hybrid(
         if chunk is None:
             continue
         score = float(mapping["rrf"] or 0.0)
-        if min_similarity and score < min_similarity:
+        distance = mapping["vector_distance"]
+        similarity = (1.0 - float(distance)) if distance is not None else None
+        # min_similarity is a DENSE threshold. Never compare it to the fused
+        # RRF score (RRF is ~1/60..1/30 and every positive threshold would
+        # silently zero the result set); lexical-only rows have no dense
+        # similarity and are kept.
+        if min_similarity and similarity is not None and similarity < min_similarity:
             continue
         out.append((chunk, score, str(mapping.get("arm") or "both")))
     return out
@@ -1375,6 +1392,61 @@ async def delete_chunks_not_in_hashes(
         )
     )
     return int(getattr(result, "rowcount", 0) or 0)
+
+
+async def prune_pages_beyond_count(
+    db: AsyncSession,
+    document_id: uuid.UUID,
+    current_page_count: int,
+) -> int:
+    """Delete DocumentPage rows with page_number above the current count.
+
+    Idempotent; safe when nothing is stale. Used when a document shrinks
+    on reprocessing so removed pages cannot stay searchable.
+    """
+    try:
+        n = int(current_page_count)
+    except (TypeError, ValueError):
+        return 0
+    pages = await get_pages(db, document_id)
+    stale = [p for p in pages if (getattr(p, "page_number", 999999) or 0) > n]
+    for p in stale:
+        await db.delete(p)
+    if stale:
+        await db.flush()
+    return len(stale)
+
+
+async def bump_document_version(
+    db: AsyncSession,
+    document_id: uuid.UUID,
+    *,
+    embedding_model_version: Optional[str] = None,
+    chunk_config: Optional[dict] = None,
+) -> int:
+    """Increment documents.version and stamp model/chunk config.
+
+    Raw SQL so pre-015 rows and both dialects work; returns new version.
+    """
+    columns = await _existing_columns(db, "documents")
+    if columns is None or "version" not in columns:
+        return 1
+    row = (await db.execute(
+        _text("SELECT version FROM documents WHERE id = :did"),
+        {"did": str(document_id)},
+    )).first()
+    cur = int(row[0]) if row and row[0] is not None else 1
+    new_version = cur + 1
+    await db.execute(
+        _text("UPDATE documents SET version = :v, "
+              "embedding_model_version = COALESCE(:emv, embedding_model_version), "
+              "chunk_config = COALESCE(CAST(:cc AS json), chunk_config) "
+              "WHERE id = :did"),
+        {"v": new_version, "did": str(document_id),
+         "emv": embedding_model_version, "cc": json.dumps(chunk_config) if chunk_config is not None else None},
+    )
+    await db.flush()
+    return new_version
 
 
 async def set_document_structure_verdict(

@@ -13,7 +13,7 @@ import struct
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text as _text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from factory import get_embedding as _factory_embedding
@@ -220,6 +220,32 @@ class LocalEmbeddingService:
 
         return embeddings_dict
 
+    def _vec_literal(self, vec: List[float]) -> str:
+        return "[" + ",".join(repr(float(v)) for v in vec) + "]"
+
+    def _is_postgres(self, db: AsyncSession) -> bool:
+        try:
+            bind = getattr(db, "bind", None)
+            if bind is None:
+                get_bind = getattr(db, "get_bind", None)
+                if callable(get_bind):
+                    bind = get_bind()
+            name = getattr(getattr(bind, "dialect", None), "name", None)
+            if name:
+                return name == "postgresql"
+            sync = getattr(bind, "sync_engine", None)
+            dname = getattr(getattr(sync, "dialect", None), "name", None)
+            if dname:
+                return dname == "postgresql"
+        except Exception:
+            pass
+        try:
+            from config.settings import get_settings
+            url = str(get_settings().database_url or "")
+            return url.startswith("postgresql")
+        except Exception:
+            return False
+
     async def _update_chunks_with_embeddings(
         self,
         db: AsyncSession,
@@ -228,11 +254,15 @@ class LocalEmbeddingService:
         """Update chunks with their embeddings in the database.
 
         Writes the packed vector plus embedding_model/embedding_dim tags so a
-        stored row round-trips to the configured dimension. Flush only: the
-        worker owns the commit (T405 scope rule).
+        stored row round-trips to the configured dimension. On PostgreSQL the
+        same vector is ALSO written to embedding_v (the column vector
+        retrieval actually filters on, retrieval/hybrid.py). Idempotent
+        UPDATE by chunk id; re-running refreshes values, never duplicates.
+        Flush only: the worker owns the commit (T405 scope rule).
         """
         model = self._model_name()
         dim = self._model_dim()
+        is_pg = self._is_postgres(db)
         for chunk_id_str, embedding_bytes in chunk_embeddings.items():
             chunk_id = uuid.UUID(chunk_id_str)
             await db.execute(
@@ -242,6 +272,13 @@ class LocalEmbeddingService:
                         embedding_model=model,
                         embedding_dim=dim)
             )
+            if is_pg:
+                vec = self.unpack_vector(embedding_bytes)
+                await db.execute(
+                    _text("UPDATE chunks SET embedding_v = CAST(:vec AS vector(1024)) "
+                          "WHERE id = :cid"),
+                    {"vec": self._vec_literal(vec), "cid": str(chunk_id)},
+                )
 
         await db.flush()
     
@@ -333,10 +370,12 @@ class LocalEmbeddingService:
         
         total_chunks = len(input_chunks)
         total_batches = (total_chunks + self.config.batch_size - 1) // self.config.batch_size
-        
+
         cached_count = 0
         embedded_count = 0
         total_tokens = 0
+        failed_batches = 0
+        failed_errors: List[str] = []
         
         # Process in batches
         for batch_num in range(total_batches):
@@ -357,24 +396,31 @@ class LocalEmbeddingService:
                 cached_chunks, uncached_chunks = await self._check_cache(batch, db)
                 cached_count += len(cached_chunks)
                 
-                # Generate embeddings for uncached chunks
-                if uncached_chunks and not force_regenerate:
+                # Generate embeddings for uncached chunks. force_regenerate
+                # RE-EMBEDS (nulls first at the route), so it must generate set.
+                if uncached_chunks:
+                    new_embeddings = None
+                    last_exc = None
                     # Retry logic for failed batches
                     for retry in range(self.config.max_retries):
                         try:
                             new_embeddings = await self._generate_embeddings_batch(uncached_chunks)
-                            
-                            # Update database
-                            await self._update_chunks_with_embeddings(db, new_embeddings)
-                            embedded_count += len(uncached_chunks)
-                            
                             break
                         except Exception as e:
-                            if retry == self.config.max_retries - 1:
-                                # Log error but continue
-                                logger.warning("Failed to generate embeddings for batch %s: %s", batch_num, e)
-                            else:
+                            last_exc = e
+                            if retry < self.config.max_retries - 1:
                                 await asyncio.sleep(self.config.retry_delay_seconds)
+                    if new_embeddings is None:
+                        # S1 honesty: a batch that exhausted retries is NOT
+                        # embedded. Record it; the caller must surface this
+                        # as partial, never as a clean complete.
+                        failed_batches += 1
+                        failed_errors.append(f"{type(last_exc).__name__}: {last_exc}")
+                        logger.warning("Failed to generate embeddings for batch %s after %d attempts: %s", batch_num, self.config.max_retries, last_exc)
+                    else:
+                        # Persist both legacy BYTEA and embedding_v (Postgres).
+                        await self._update_chunks_with_embeddings(db, new_embeddings)
+                        embedded_count += len(uncached_chunks)
                 
                 # Calculate tokens
                 for chunk in batch:
@@ -409,6 +455,7 @@ class LocalEmbeddingService:
         
         processing_time = time.time() - start_time
         
+        complete = failed_batches == 0 and (embedded_count + cached_count) >= total_chunks
         return EmbeddingResult(
             document_id=str(document_id),
             project_id=str(project_id),
@@ -417,7 +464,9 @@ class LocalEmbeddingService:
             cached_chunks=cached_count,
             total_tokens=total_tokens,
             processing_time=processing_time,
-            is_complete=True
+            is_complete=complete,
+            failed_batches=failed_batches,
+            errors=failed_errors or None,
         )
     
     async def generate_embeddings_incremental(

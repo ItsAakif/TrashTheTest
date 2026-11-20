@@ -160,6 +160,10 @@ class AppConfig(BaseModel):
     rerank: RerankConfig = RerankConfig()
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
     database_url: str = ""
+    semantic_cache_enabled: bool = True
+    semantic_cache_threshold: float = 0.80
+    semantic_cache_ttl_seconds: int = 3600
+    semantic_cache_max_entries: int = 5000
 
     # Environment override prefix
     env_prefix: str = ""

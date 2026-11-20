@@ -1,0 +1,80 @@
+{
+  "version": "1.1",
+  "project_title": "RAG Eval",
+  "provenance": "synthetic-manual: fixtures, queries and anchor labels authored for this evaluation; not independently human-validated",
+  "notes": "All fixture documents are ingested through the normal pipeline, so every arm sees the same fully vectorized corpus.",
+  "queries": [
+    {
+      "id": "q01",
+      "query": "What powers ATP production during the light reactions?",
+      "anchors": [
+        "proton gradient drives ATP synthase"
+      ],
+      "category": "biology",
+      "difficulty": "medium"
+    },
+    {
+      "id": "q02",
+      "query": "Which pigments absorb blue and red light?",
+      "anchors": [
+        "Chlorophyll a and chlorophyll b absorb light"
+      ],
+      "category": "biology",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q03",
+      "query": "What releases oxygen when water is split?",
+      "anchors": [
+        "splits water molecules, releasing oxygen"
+      ],
+      "category": "biology",
+      "difficulty": "medium"
+    },
+    {
+      "id": "q04",
+      "query": "How does bubble sort order a list?",
+      "anchors": [
+        "Bubble sort compares adjacent elements"
+      ],
+      "category": "algorithms",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q05",
+      "query": "Which search algorithm needs a sorted array?",
+      "anchors": [
+        "Binary search halves a sorted array"
+      ],
+      "category": "algorithms",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q06",
+      "query": "What is insertion sort's runtime on already sorted input?",
+      "anchors": [
+        "Insertion sort is stable and runs in O(n)"
+      ],
+      "category": "algorithms",
+      "difficulty": "hard"
+    },
+    {
+      "id": "q07",
+      "query": "Why would a database index slow down writes?",
+      "anchors": [
+        "speeds up lookups at the cost of additional storage and slower writes"
+      ],
+      "category": "databases",
+      "difficulty": "medium"
+    },
+    {
+      "id": "q08",
+      "query": "What does atomicity mean in ACID?",
+      "anchors": [
+        "Atomicity guarantees that a transaction is all-or-nothing"
+      ],
+      "category": "databases",
+      "difficulty": "medium"
+    }
+  ]
+}
