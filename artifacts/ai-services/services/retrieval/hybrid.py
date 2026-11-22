@@ -107,7 +107,13 @@ WITH params AS (
     CAST(CAST(:document_id AS text) AS uuid) AS did,
     CAST(CAST(:user_id AS text) AS uuid) AS uid,
     CAST(:per_arm AS integer) AS per_arm,
-    CAST(:limit AS integer) AS lim
+    CAST(:limit AS integer) AS lim,
+    CAST(:min_similarity AS double precision) AS min_sim,
+    CAST(:vector_limit AS integer) AS vlim,
+    CAST(:lexical_limit AS integer) AS llim,
+    CAST(:vector_weight AS double precision) AS vw,
+    CAST(:lexical_weight AS double precision) AS lw,
+    CAST(:source_types AS text) AS stypes
 ),
 vector_arm AS (
   SELECT c.id::text AS chunk_id,
@@ -121,8 +127,12 @@ vector_arm AS (
     AND ((SELECT pid FROM params) IS NULL OR d.project_id = (SELECT pid FROM params))
     AND ((SELECT did FROM params) IS NULL OR c.document_id = (SELECT did FROM params))
     AND ((SELECT uid FROM params) IS NULL OR p.user_id = (SELECT uid FROM params))
+    AND ((SELECT stypes FROM params) = ''
+         OR d.source_type = ANY(string_to_array((SELECT stypes FROM params), ',')))
+    AND ((SELECT min_sim FROM params) <= 0
+         OR (1 - (c.embedding_v <=> (SELECT qvec FROM params))) >= (SELECT min_sim FROM params))
   ORDER BY c.embedding_v <=> (SELECT qvec FROM params)
-  LIMIT (SELECT per_arm FROM params)
+  LIMIT (SELECT vlim FROM params)
 ),
 lexical_arm AS (
   SELECT c.id::text AS chunk_id,
@@ -135,12 +145,15 @@ lexical_arm AS (
     AND ((SELECT pid FROM params) IS NULL OR d.project_id = (SELECT pid FROM params))
     AND ((SELECT did FROM params) IS NULL OR c.document_id = (SELECT did FROM params))
     AND ((SELECT uid FROM params) IS NULL OR p.user_id = (SELECT uid FROM params))
+    AND ((SELECT stypes FROM params) = ''
+         OR d.source_type = ANY(string_to_array((SELECT stypes FROM params), ',')))
   ORDER BY rank_score DESC
-  LIMIT (SELECT per_arm FROM params)
+  LIMIT (SELECT llim FROM params)
 ),
 fused AS (
   SELECT COALESCE(v.chunk_id, l.chunk_id) AS chunk_id,
-         (COALESCE(1.0 / (60 + v.rnk), 0) + COALESCE(1.0 / (60 + l.rnk), 0)) AS rrf,
+         (COALESCE((SELECT vw FROM params) / (60 + v.rnk), 0)
+          + COALESCE((SELECT lw FROM params) / (60 + l.rnk), 0)) AS rrf,
          v.distance AS vector_distance,
          l.rank_score AS lexical_score,
          CASE WHEN v.chunk_id IS NOT NULL AND l.chunk_id IS NOT NULL THEN 'both'

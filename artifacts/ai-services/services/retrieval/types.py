@@ -126,6 +126,11 @@ class RetrievalConfig(BaseModel):
     per_arm_candidates: int = 50
     enable_hybrid: bool = True
     rrf_k: int = 60
+    # S2: independently measurable strategies.
+    retrieval_mode: str = "hybrid"          # hybrid | dense | sparse
+    vector_weight: float = 1.0
+    lexical_weight: float = 1.0
+    source_types: List[str] = Field(default_factory=list)
 
     # Rerank (T302): switchable off for A/B comparison
     enable_rerank: bool = True

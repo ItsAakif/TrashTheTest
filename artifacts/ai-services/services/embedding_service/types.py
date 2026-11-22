@@ -48,6 +48,8 @@ class EmbeddingResult(BaseModel):
     total_tokens: int
     processing_time: float
     is_complete: bool = True
+    failed_batches: int = 0
+    errors: Optional[List[str]] = None
     
     @property
     def new_embeddings_generated(self) -> int:

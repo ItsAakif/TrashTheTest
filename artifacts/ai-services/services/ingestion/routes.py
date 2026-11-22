@@ -676,8 +676,17 @@ async def delete_document(
     except Exception:
         pass
     await get_default_backend().delete(document.file_path)
+    project_id = getattr(document, "project_id", None)
     await db.delete(document)
     await db.commit()
+    # S3: remove cached retrievals/answers that referenced this document.
+    try:
+        from services.semantic_cache import semantic_cache
+        await semantic_cache.invalidate(
+            db, document_id=document.id, project_id=project_id
+        )
+    except Exception:
+        pass
     return DeleteResponse(success=True, message="Document deleted successfully")
 
 

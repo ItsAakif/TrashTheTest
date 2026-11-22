@@ -1,0 +1,35 @@
+Photosynthesis overview
+Photosynthesis converts light energy into chemical energy stored in glucose.
+
+Chlorophyll pigments
+Chlorophyll a and chlorophyll b absorb red and blue light in the thylakoid membranes.
+
+Light reactions
+The light dependent reactions split water, release oxygen, and produce ATP and NADPH.
+
+Calvin cycle
+The Calvin cycle fixes carbon dioxide into sugar in the stroma using ATP and NADPH.
+
+Stomata gas exchange
+Stomata control carbon dioxide intake and water loss from leaves.
+
+Factors affecting rate
+Light intensity, carbon dioxide concentration, and temperature limit the rate of photosynthesis.
+
+C4 plants
+C4 plants such as maize concentrate carbon dioxide to reduce photorespiration in hot climates.
+
+CAM plants
+CAM plants open stomata at night and store carbon dioxide as malic acid.
+
+Chloroplast structure
+Chloroplasts contain thylakoids stacked into grana surrounded by stroma fluid.
+
+Photosystems
+Photosystem II and photosystem I work in series in the electron transport chain.
+
+Photorespiration
+Photorespiration occurs when rubisco binds oxygen instead of carbon dioxide, wasting energy.
+
+Rubisco enzyme
+Rubisco is the most abundant enzyme on Earth and catalyzes carbon fixation.

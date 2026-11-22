@@ -30,6 +30,7 @@ from services.website_gen import router as website_gen_router
 from services.study import router as study_router
 from services.jobs import router as jobs_router
 from services.cache.routes import router as cache_router
+from services.semantic_cache.routes import router as semantic_cache_router
 from services.tts.routes import router as tts_router
 from services.auth.routes import router as auth_router
 from services.academic.routes import (
@@ -222,6 +223,7 @@ def create_app() -> FastAPI:
     app.include_router(study_router)
     app.include_router(jobs_router)
     app.include_router(cache_router)
+    app.include_router(semantic_cache_router)
     app.include_router(tts_router)
 
     @app.get("/health")

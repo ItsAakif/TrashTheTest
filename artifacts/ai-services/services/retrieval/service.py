@@ -186,7 +186,7 @@ class VectorRetrievalService:
                 sim = (len(qt & ct) / len(qt)) if qt else 0.0
             scored.append((chunk, sim))
         scored.sort(key=lambda t: t[1], reverse=True)
-        vector_arm = [(c, "vector") for c, _ in scored[:per_arm]]
+        vector_arm = [(c, sim, "vector") for c, sim in scored[:per_arm]]
 
         qtokens = _tokens(query_text)
         lex = []
@@ -195,7 +195,7 @@ class VectorRetrievalService:
             s = (len(qtokens & ct) / len(qtokens)) if qtokens else 0.0
             lex.append((chunk, s))
         lex.sort(key=lambda t: t[1], reverse=True)
-        lexical_arm = [(c, "lexical") for c, s in lex[:per_arm] if s > 0]
+        lexical_arm = [(c, None, "lexical") for c, s in lex[:per_arm] if s > 0]
         return vector_arm, lexical_arm
 
     # -- main search ----------------------------------------------------------
@@ -213,6 +213,10 @@ class VectorRetrievalService:
         offset: int = 0,
         min_similarity: float = 0.0,
         relaxed: bool = False,
+        vector_weight: float = 1.0,
+        lexical_weight: float = 1.0,
+        source_types=None,
+        mode: str = "hybrid",
     ) -> Tuple[List[Tuple[Any, float, str]], str]:
         """Run hybrid search; returns (rows, backend).
 
@@ -240,6 +244,10 @@ class VectorRetrievalService:
                 offset=offset,
                 min_similarity=min_similarity,
                 relaxed=relaxed,
+                vector_weight=vector_weight,
+                lexical_weight=lexical_weight,
+                source_types=source_types,
+                mode=mode,
             )
             return rows, "pgvector"
         except RuntimeError:
@@ -256,24 +264,27 @@ class VectorRetrievalService:
         vector_arm, lexical_arm = await self._fallback_candidates(
             db, query_embedding, query_text, project_id, document_id, per_arm
         )
-        vec_ids = [str(c.id) for c, _ in vector_arm]
-        lex_ids = [str(c.id) for c, _ in lexical_arm]
+        vec_ids = [str(c.id) for c, _, _ in vector_arm]
+        lex_ids = [str(c.id) for c, _, _ in lexical_arm]
         fused = rrf_fuse([vec_ids, lex_ids], k=self.config.rrf_k,
                          top_n=limit + offset)
         by_id = {}
-        for c, arm in vector_arm:
-            by_id.setdefault(str(c.id), [c, arm])
-        for c, arm in lexical_arm:
+        for c, sim, arm in vector_arm:
+            by_id.setdefault(str(c.id), [c, arm, sim])
+        for c, sim, arm in lexical_arm:
             if str(c.id) in by_id and by_id[str(c.id)][1] != arm:
                 by_id[str(c.id)][1] = "both"
+                by_id[str(c.id)][2] = by_id[str(c.id)][2] or sim
             else:
-                by_id.setdefault(str(c.id), [c, arm])
+                by_id.setdefault(str(c.id), [c, arm, sim])
         rows = []
         for cid, score in fused[offset:]:
             entry = by_id.get(cid)
             if entry is None:
                 continue
-            if min_similarity and score < min_similarity:
+            # min_similarity is DENSE-only; RRF is a different scale.
+            sim = entry[2]
+            if min_similarity and sim is not None and sim < min_similarity:
                 continue
             rows.append((entry[0], score, entry[1]))
         return rows, backend
@@ -456,6 +467,10 @@ class VectorRetrievalService:
         min_similarity: Optional[float] = None,
         enable_rerank: Optional[bool] = None,
         offset: int = 0,
+        retrieval_mode: Optional[str] = None,
+        vector_weight: Optional[float] = None,
+        lexical_weight: Optional[float] = None,
+        source_types: Optional[List[str]] = None,
     ) -> RetrievalResult:
         """Main retrieval entry point with DB session (T301-T304)."""
         start_time = time.time()
@@ -466,6 +481,12 @@ class VectorRetrievalService:
         top_k = min(top_k or self.config.default_top_k, self.config.max_top_k)
         min_similarity = (self.config.min_similarity_threshold
                           if min_similarity is None else min_similarity)
+        mode = (retrieval_mode or self.config.retrieval_mode or "hybrid").lower()
+        if mode not in ("hybrid", "dense", "sparse"):
+            mode = "hybrid"
+        vw = self.config.vector_weight if vector_weight is None else float(vector_weight)
+        lw = self.config.lexical_weight if lexical_weight is None else float(lexical_weight)
+        stypes = source_types if source_types is not None else self.config.source_types
 
         try:
             project_uuid = uuid.UUID(project_id) if project_id else None
@@ -508,6 +529,62 @@ class VectorRetrievalService:
             query_embedding = []
         query_embed_time = time.time() - embed_start
 
+        # S3 retrieval cache. Identity includes user/project/doc versions/
+        # embedding model/retrieval config, so a permission, version, model or
+        # ranking change can never reuse an older result.
+        cache_identity = None
+        cache_doc_versions: List[str] = []
+        try:
+            from services.semantic_cache import (
+                semantic_cache, identity_key, doc_versions_for_project,
+                retrieval_config_hash,
+            )
+            cache_doc_versions = (
+                await doc_versions_for_project(db, project_uuid)
+                if project_uuid else []
+            )
+            cache_identity = identity_key(
+                user_id=user_uuid,
+                project_id=project_uuid,
+                doc_versions=cache_doc_versions,
+                embedding_model=self.config.embedding_model,
+                llm_model="",
+                prompt_version="retrieval-v1",
+                retrieval_config_hash=retrieval_config_hash(
+                    mode=mode, top_k=top_k, min_similarity=min_similarity,
+                    rerank=bool(enable_rerank), vw=vw, lw=lw,
+                    source_types=list(stypes or []),
+                ),
+                response_format="retrieval-v1",
+            )
+            cached = await semantic_cache.lookup(
+                db, layer="retrieval", query=cleaned,
+                identity=cache_identity, embedding=query_embedding,
+            )
+            if cached and isinstance(cached.get("response"), dict):
+                cached["response"].setdefault("meta", {})
+                cached["response"]["meta"]["cache"] = "hit"
+                cached["response"]["meta"]["cache_similarity"] = cached.get("similarity")
+                hit = RetrievalResult.model_validate(cached["response"])
+                try:
+                    from services.retrieval.tracing import record_trace
+                    await record_trace(
+                        user_id=user_uuid, project_id=project_uuid,
+                        document_id=doc_uuid, query_text=cleaned,
+                        retrieval_mode=mode, rerank=bool(enable_rerank),
+                        chunk_ids=[c.chunk_id for c in hit.chunks],
+                        scores=[c.score for c in hit.chunks],
+                        cache_layer="retrieval", cache_hit=True,
+                        latency_ms=(time.time() - start_time) * 1000.0,
+                        rerank_latency_ms=hit.rerank_latency_ms,
+                        context_tokens_estimate=sum(len(c.content or "") // 4 for c in hit.chunks),
+                    )
+                except Exception:
+                    pass
+                return hit
+        except Exception:
+            pass
+
         retrieval_start = time.time()
         rows: List[Tuple[Any, float, str]] = []
         backend = "offline-fallback"
@@ -519,6 +596,8 @@ class VectorRetrievalService:
                 db, cleaned, query_embedding, project_uuid, doc_uuid, user_uuid,
                 per_arm=self.config.per_arm_candidates, limit=top_k,
                 offset=offset, min_similarity=min_similarity,
+                vector_weight=vw, lexical_weight=lw,
+                source_types=stypes, mode=mode,
             )
             scoped = (
                 project_uuid is not None
@@ -537,7 +616,8 @@ class VectorRetrievalService:
                     user_uuid,
                     per_arm=self.config.per_arm_candidates, limit=top_k,
                     offset=offset, min_similarity=min_similarity,
-                    relaxed=True,
+                    relaxed=True, vector_weight=vw, lexical_weight=lw,
+                    source_types=stypes, mode=mode,
                 )
                 if relaxed_rows:
                     rows, backend = relaxed_rows, relaxed_backend
@@ -556,6 +636,10 @@ class VectorRetrievalService:
         meta: Dict[str, Any] = {
             "backend": backend,
             "fusion": "rrf",
+            "retrieval_mode": mode,
+            "vector_weight": vw,
+            "lexical_weight": lw,
+            "source_types": list(stypes or []),
             "tokens_estimate": max(1, len(cleaned) // 4),
             "embedding_model": self.config.embedding_model,
             "offset": offset,
@@ -564,7 +648,7 @@ class VectorRetrievalService:
             # Only present when a recovery actually produced the rows.
             meta["recovery"] = recovery
 
-        return RetrievalResult(
+        result = RetrievalResult(
             query=cleaned,
             total_results=len(chunks),
             chunks=chunks,
@@ -580,6 +664,40 @@ class VectorRetrievalService:
             truncated_query=truncated,
             meta=meta,
         )
+        try:
+            from services.retrieval.tracing import record_trace
+            await record_trace(
+                user_id=user_uuid, project_id=project_uuid,
+                document_id=doc_uuid, query_text=cleaned,
+                retrieval_mode=mode, rerank=bool(enable_rerank),
+                chunk_ids=[c.chunk_id for c in chunks],
+                scores=[c.score for c in chunks],
+                latency_ms=(time.time() - start_time) * 1000.0,
+                rerank_latency_ms=result.rerank_latency_ms,
+                context_tokens_estimate=sum(len(c.content or "") // 4 for c in chunks),
+            )
+        except Exception:
+            pass
+        if cache_identity and chunks:
+            try:
+                from services.semantic_cache import semantic_cache
+                await semantic_cache.store(
+                    db, layer="retrieval", query=cleaned,
+                    identity=cache_identity, response=result.model_dump(),
+                    document_ids=sorted({str(c.document_id) for c in chunks if c.document_id}),
+                    doc_versions=cache_doc_versions,
+                    project_id=project_uuid, user_id=user_uuid,
+                    embedding_model=self.config.embedding_model,
+                    retrieval_config_hash_value=retrieval_config_hash(
+                        mode=mode, top_k=top_k, min_similarity=min_similarity,
+                        rerank=bool(enable_rerank), vw=vw, lw=lw,
+                        source_types=list(stypes or []),
+                    ),
+                    response_format="retrieval-v1",
+                )
+            except Exception:
+                pass
+        return result
 
     async def get_retrieval_stats(
         self,

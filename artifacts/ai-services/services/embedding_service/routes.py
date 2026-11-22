@@ -60,7 +60,7 @@ class EmbeddingStatsResponse(BaseModel):
 @router.post("/generate", response_model=EmbeddingResponse)
 async def start_embedding_generation(
     request: EmbeddingRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Start embedding generation for a document.
@@ -260,6 +260,13 @@ async def generate_incremental_embeddings(
             db=db
         )
         
+        # S3: regenerated vectors invalidate cached retrievals for this doc.
+        try:
+            from services.semantic_cache import semantic_cache
+            await semantic_cache.invalidate(db, document_id=doc_uuid,
+                                            project_id=document.project_id)
+        except Exception:
+            pass
         return {
             "document_id": document_id,
             "chunks_embedded": result.embedded_chunks,
@@ -294,13 +301,27 @@ async def regenerate_embeddings(
                 detail=f"Document {document_id} not found"
             )
         
-        # Clear existing embeddings
-        from sqlalchemy import update
+        # Clear existing embeddings. Both stores must be cleared: the legacy
+        # BYTEA column and embedding_v (what vector retrieval filters on).
+        # Leaving embedding_v behind would keep serving stale vectors while
+        # regeneration runs or if it fails.
+        from sqlalchemy import text as _sql_text, update
         await db.execute(
             update(Chunk)
             .where(Chunk.document_id == doc_uuid)
-            .values(embedding=None)
+            .values(embedding=None, embedding_model=None, embedding_dim=None)
         )
+        is_pg = False
+        try:
+            bind = getattr(db, "bind", None)
+            is_pg = getattr(getattr(bind, "dialect", None), "name", None) == "postgresql"
+        except Exception:
+            is_pg = False
+        if is_pg:
+            await db.execute(
+                _sql_text("UPDATE chunks SET embedding_v = NULL WHERE document_id = :did"),
+                {"did": str(doc_uuid)},
+            )
         await db.commit()
         
         # Generate new embeddings

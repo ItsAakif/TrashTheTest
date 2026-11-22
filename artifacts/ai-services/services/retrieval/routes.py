@@ -12,7 +12,7 @@ api-services.ts sends query/projectId/documentId/topK/minSimilarity).
 """
 
 import uuid
-from typing import Optional, Any
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -39,6 +39,10 @@ class SearchRequest(BaseModel):
     min_similarity: Optional[float] = Field(default=0.0, alias="minSimilarity")
     enable_rerank: Optional[bool] = None
     offset: int = 0
+    retrieval_mode: Optional[str] = Field(default=None, alias="retrievalMode")
+    vector_weight: Optional[float] = Field(default=None, alias="vectorWeight")
+    lexical_weight: Optional[float] = Field(default=None, alias="lexicalWeight")
+    source_types: Optional[List[str]] = Field(default=None, alias="sourceTypes")
 
     model_config = {"populate_by_name": True}
 
@@ -53,6 +57,10 @@ class SearchRequest(BaseModel):
             "min_similarity": data.get("min_similarity", 0.0),
             "enable_rerank": data.get("enable_rerank"),
             "offset": data.get("offset", 0),
+            "retrieval_mode": data.get("retrieval_mode"),
+            "vector_weight": data.get("vector_weight"),
+            "lexical_weight": data.get("lexical_weight"),
+            "source_types": data.get("source_types"),
         }
 
 
@@ -232,6 +240,10 @@ async def search(
             min_similarity=params["min_similarity"],
             enable_rerank=params["enable_rerank"],
             offset=params["offset"] or 0,
+            retrieval_mode=params["retrieval_mode"],
+            vector_weight=params["vector_weight"],
+            lexical_weight=params["lexical_weight"],
+            source_types=params["source_types"],
         )
     except HTTPException:
         raise

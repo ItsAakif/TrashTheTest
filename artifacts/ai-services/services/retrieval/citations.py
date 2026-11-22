@@ -90,8 +90,20 @@ def build_citation_from_chunk(chunk: Any, document: Any = None) -> Citation:
     )
 
 
+def _normalise_quote(value: str) -> str:
+    import re
+    import unicodedata
+
+    text = unicodedata.normalize("NFKC", value or "")
+    text = re.sub(r"\s+", " ", text).strip().casefold()
+    return text
+
+
 async def resolve_citation(
-    db: AsyncSession, chunk_id: str, allowed_chunk_ids: Optional[set] = None
+    db: AsyncSession,
+    chunk_id: str,
+    allowed_chunk_ids: Optional[set] = None,
+    quote: Optional[str] = None,
 ) -> Citation:
     """Resolve a chunk id to a citation; rejects stale/foreign references.
 
@@ -125,6 +137,19 @@ async def resolve_citation(
     if not (chunk.content or "").strip():
         citation.valid = False
         citation.reason = "stored chunk text is empty"
+    elif quote is not None:
+        # S2: the documented span check, actually enforced. Normalised
+        # containment (models often quote a sentence inside a chunk); an
+        # empty or non-matching quote is rejected rather than silently
+        # rendered as a real citation.
+        q = _normalise_quote(quote)
+        body = _normalise_quote(chunk.content)
+        if not q:
+            citation.valid = False
+            citation.reason = "empty citation quote"
+        elif q not in body:
+            citation.valid = False
+            citation.reason = "quote does not match stored chunk text"
     return citation
 
 

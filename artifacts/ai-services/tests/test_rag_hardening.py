@@ -108,7 +108,7 @@ async def test_lexical_arm_covers_rare_term_vector_misses():
     vec_arm, lex_arm = await svc._fallback_candidates(
         db, vec_for("zxq-model-9000"), "zxq-model-9000"
     )
-    lex_ids = {str(c.id) for c, _ in lex_arm}
+    lex_ids = {str(c.id) for c, _, _ in lex_arm}
     assert str(rare.id) in lex_ids
 
 
@@ -184,6 +184,6 @@ async def test_embedding_space_isolation_excludes_foreign_model():
     vec_arm, lex_arm = await svc._fallback_candidates(
         db, vec_for("photosynthesis"), "photosynthesis"
     )
-    vec_ids = {str(c.id) for c, _ in vec_arm}
+    vec_ids = {str(c.id) for c, _, _ in vec_arm}
     assert str(good.id) in vec_ids
     assert str(foreign.id) not in vec_ids

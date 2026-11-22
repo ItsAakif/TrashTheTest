@@ -422,10 +422,14 @@ async def test_t404_embedding_failure_is_unembedded_never_indexed(monkeypatch, t
     _stub_pipeline(monkeypatch, db, embed_side_effect="fail")
     from services.jobs.handlers.document_processing import process_job
     await process_job(SimpleNamespace(db=db), job)
-    assert db.job.status == JobStatus.COMPLETED
+    # S1 contract: an embedding failure is retryable, so the job must NOT
+    # report success. It stays PENDING for retry (or FAILED when attempts are
+    # exhausted). What matters most: it is never "indexed".
+    assert db.job.status in (JobStatus.PENDING, JobStatus.FAILED)
     assert db.job.output_data.get("indexing_state") == "unembedded"
     assert db.job.output_data.get("indexing_state") != "indexed"
     assert db.doc.indexing_state == "unembedded"
+    assert db.job.stage == "chunk"  # retry re-enters embed, does not skip it
 
 
 # ---------------- T405 ----------------

@@ -11,6 +11,9 @@
 [![React 19](https://img.shields.io/badge/React-19-61dafb)](https://react.dev)
 [![PostgreSQL + pgvector](https://img.shields.io/badge/PostgreSQL-pgvector-336791)](https://github.com/pgvector/pgvector)
 [![Self-hosted](https://img.shields.io/badge/hosting-self--hosted-success)](#self-hosting)
+[![Hybrid RAG](https://img.shields.io/badge/RAG-hybrid%20%2B%20rerank-6d5dfc)](#retrieval-evaluation-and-semantic-caching)
+[![Semantic cache](https://img.shields.io/badge/cache-semantic-14b8a6)](#retrieval-evaluation-and-semantic-caching)
+[![Evaluated](https://img.shields.io/badge/retrieval-evaluated-f59e0b)](#retrieval-evaluation-and-semantic-caching)
 
 [Live site](https://trashthetest.aakifmudel.xyz) - [Features](#features) - [How it works](#how-it-works) - [Quick start](#quick-start) - [Self-hosting](#self-hosting) - [Troubleshooting](#troubleshooting)
 
@@ -64,7 +67,11 @@ It is built for one person's workspace, not a multi-tenant SaaS.
 
 - **Ingestion** - native PDF extraction, quality gating, targeted PP-OCRv6 for scanned or poor pages, DOCX/TXT support.
 - **Structure** - page-level provenance, a topic/subtopic/concept spine, deterministic junk filtering for covers, credits and running headers.
-- **Retrieval** - Qwen3-Embedding-0.6B (1024d), pgvector HNSW, PostgreSQL FTS, RRF fusion, optional cross-encoder reranking.
+- **Retrieval** - Qwen3-Embedding-0.6B (1024d), pgvector HNSW, PostgreSQL FTS, weighted RRF, selectable dense/sparse/hybrid modes, source-type filters and cross-encoder reranking.
+- **Retrieval evaluation** - a 30-query golden harness reporting Recall@K, Precision@K, MRR, nDCG@K, Hit Rate and P50/P95 latency across four configurations.
+- **Semantic caching** - identity-scoped query/answer reuse in Postgres + pgvector with a Redis hot key, TTL, document-version invalidation and hit/miss stats.
+- **Lifecycle** - document versions, embedding-model and chunk-config tracking, stale chunk/page pruning, cascade delete and honest embedding retry states.
+- **Observability** - per-query `retrieval_traces`: mode, chunk ids, scores, rerank latency, cache layer and context-token estimate.
 - **Generation** - Pydantic-validated structured output, bounded repair, citation resolution, grounding checks, prompt-injection guards.
 - **Notes PDF** - ReportLab with title page, TOC, hierarchical headings, page numbers, badges for coverage and a gaps report.
 - **Jobs** - Postgres `SKIP LOCKED` queue with a dedicated worker, progress, cancellation, retries, resume and idempotency.
@@ -89,6 +96,10 @@ flowchart LR
   API --> LLM[Groq primary / OpenRouter fallback]
   API --> PDF[ReportLab notes PDF]
   API --> PUB[Sanitised published site]
+  API --> SC[Semantic cache: Postgres HNSW + Redis hot key]
+  SC --> DB
+  API --> TR[(retrieval_traces)]
+  TR --> DB
 ```
 
 The document pipeline is deliberately boring and resumable:
@@ -98,6 +109,44 @@ upload -> validate -> extract/OCR -> structure -> chunk -> embed -> index -> com
 ```
 
 Generation only starts once a document is indexed. Notes are generated per topic from the spine, coverage-checked, repaired once where needed, then synthesised in source order and validated before rendering.
+
+## Retrieval, evaluation and semantic caching
+
+### Measured locally
+
+| Check | Result |
+|---|---|
+| Backend tests | **790 passed** |
+| Golden set | 30 queries, 6 live chunks, K=5 |
+| Hybrid retrieval | MRR **0.983**, nDCG@5 **0.988**, P50 **1.03 s** |
+| Dense only | MRR 0.933 |
+| Sparse only | MRR 1.000 |
+| Hybrid + rerank | MRR 0.983, P50 1.20 s |
+| Semantic cache, repeated queries | 30/30 hits, **2.48x** median speed-up (1.29 s -> 0.52 s P50) |
+| Cache threshold 0.80 | **0 false hits** on 5 near-miss pairs, 40% paraphrase reuse |
+
+These are local Docker measurements on a 3.8 GB CPU-only VM, not a production
+benchmark. The golden set comes from the repository's hand-labelled offline
+fixtures, remapped to live chunks; labels were not independently re-validated.
+Token savings are estimated from context length, not billed provider usage.
+See [RETRIEVAL_EVALUATION.md](./RETRIEVAL_EVALUATION.md) and
+[BENCHMARK_RESULTS.md](./BENCHMARK_RESULTS.md).
+
+### Reproduce
+
+```bash
+docker compose exec api python -m scripts.eval_retrieval \
+  --dataset tests/eval/dataset_golden.json --out tests/eval/results_golden.json
+docker compose exec api python -m scripts.bench_semantic_cache \
+  --dataset tests/eval/dataset_golden.json --out tests/eval/cache_benchmark.json
+docker compose exec api python -m scripts.smoke_semantic_cache
+```
+
+The cache is keyed by `sha256(user, project, doc versions, embedding model,
+LLM model, prompt version, retrieval config, response format)`. Changing any
+of those misses; document deletion and embedding regeneration invalidate
+entries. A conservative 0.80 threshold is used because lower thresholds
+admitted dot-product vs cross-product confusion in calibration.
 
 ## Quick start
 
@@ -155,7 +204,7 @@ pnpm dev
 ### Tests
 
 ```bash
-cd artifacts/ai-services && pytest -q          # 777 tests
+cd artifacts/ai-services && pytest -q          # 790 tests
 cd artifacts/trash-the-test && pnpm typecheck && pnpm build
 ```
 
@@ -225,12 +274,16 @@ rather than vendored here.
 - **Notes are bounded per topic.** Slow providers yield explicit gaps rather than unbounded jobs.
 - **Syllabus extraction depends on the PDF.** Scanned or table-heavy syllabi may yield partial units; OCR is applied only when the text layer is missing.
 - **Not a multi-tenant SaaS.** There is no team workspace, sharing or collaborative editing. Public study sites are read-only.
+- **Route-level authorisation is incomplete.** Several RAG-adjacent endpoints (chunking, embedding, cache, research, TTS, some study routes) are unauthenticated; do not expose this deployment as a multi-user service.
+- **Historical embeddings are not fully backfilled.** 1,197 older chunks still lack `embedding_v`; dense retrieval only sees vectorized rows until `scripts/reindex_embeddings.py --all` is run.
+- **Evaluation corpus is small.** 6 live chunks / 30 queries; recall saturates and reranking showed no quality gain on this set.
+- **Semantic cache is conservative.** 40% paraphrase reuse at 0.80; similarity is not entailment. LLM-as-judge verification is out of scope.
 - Some live acceptance gates (HNSW `EXPLAIN`, provider failover under a real 429, 300-page runs, Puter) are not exercised in CI.
 
 ## Security and permissions
 
 - JWT access and refresh tokens with Argon2id password hashing and revocation on password change.
-- Every project, document, job and website route checks ownership; foreign resources return 404.
+- Project-scoped generation, document, job and website routes check ownership; several internal RAG endpoints still lack auth (known gap above).
 - Uploads are validated by magic bytes and size, stored under generated keys, and never exposed by filesystem path.
 - Provider keys are server-side only; user-supplied keys are encrypted at rest and never returned.
 - Generated website HTML is sanitised before persistence and rendering; scripts, unsafe URLs and event handlers are removed.
@@ -246,6 +299,14 @@ artifacts/
 lib/                 shared workspace packages
 docs/screens/        screenshots used in this README
 ```
+
+## Engineering docs
+
+- [Enterprise RAG architecture](./ENTERPRISE_RAG_ARCHITECTURE.md)
+- [Semantic caching architecture](./SEMANTIC_CACHING_ARCHITECTURE.md)
+- [Retrieval evaluation](./RETRIEVAL_EVALUATION.md)
+- [Benchmark results](./BENCHMARK_RESULTS.md)
+- [Design decisions](./DESIGN_DECISIONS.md)
 
 ## Contributing
 

@@ -1,0 +1,7 @@
+Photosynthesis Light Reactions
+
+The light-dependent reactions convert solar energy into chemical energy inside the thylakoid membrane. Photosystem II absorbs photons and splits water molecules, releasing oxygen as a byproduct. Electrons travel through the plastoquinone pool to the cytochrome b6f complex, which pumps protons into the thylakoid lumen. The resulting proton gradient drives ATP synthase to produce ATP.
+
+Photosystem I re-energizes electrons with a second photon absorption. Ferredoxin transfers these electrons to NADP+ reductase, producing NADPH. Both ATP and NADPH are consumed later in the Calvin cycle to fix carbon dioxide into sugars.
+
+Chlorophyll a and chlorophyll b absorb light most strongly in the blue and red regions of the visible spectrum. Accessory pigments such as carotenoids broaden the absorption range and protect the reaction centers from photooxidative damage.
